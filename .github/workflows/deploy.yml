@@ -1,0 +1,111 @@
+name: Deploy to VPS
+
+# Same shape as gitube: build on GitHub's runner, rsync the static dist/ into a
+# web root on the Oracle VPS, and let the host nginx serve it. The VPS never
+# builds anything, so a deploy is a file copy.
+
+on:
+  push:
+    branches: [master]
+  # So a deploy can be re-run without an empty commit.
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-repomapo
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_HOST: 146.235.217.254
+      VPS_USER: ubuntu
+      WEB_ROOT: /var/www/repomapo
+      SITE_URL: https://repomapo.latesailor.dev
+      # Public host key of the VPS (not a secret); pinned so the deploy refuses an impostor server.
+      VPS_HOST_KEY: 146.235.217.254 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGjq3q6ZUmOdu85PlO0JdljadM+66ga2RSWuQng8129Z
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      # Tests gate the deploy: a converter or layout regression never reaches the site.
+      - run: npm test
+      # tsc -b && vite build
+      - run: npm run build
+
+      # Only the sample index is committed (.gitignore), so this is a guard against a build that
+      # somehow picked up a local index, which holds the full source of whatever repo was indexed.
+      - name: Check that only the sample index ships
+        run: |
+          extra=$(find dist/data -type f ! -name sample.json | head -5)
+          if [ -n "$extra" ]; then
+            echo "::error::dist/data holds more than sample.json: $extra"
+            exit 1
+          fi
+
+      - name: Configure SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          if [ -z "$VPS_SSH_KEY" ]; then
+            echo "::error::VPS_SSH_KEY is not set in this repository's secrets (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          # The secret may be the key file as one base64 line (preferred: nothing for a browser to mangle)
+          # or the raw PEM, which can arrive with CRLF endings, flattened lines, or stray spaces.
+          KEY=$(printf '%s' "$VPS_SSH_KEY" | tr -d '\r')
+          if printf '%s' "$KEY" | grep -q -- '-----BEGIN'; then
+            HEADER=$(printf '%s' "$KEY" | grep -o -- '-----BEGIN [A-Z ]*-----' | head -1)
+            FOOTER=$(printf '%s' "$KEY" | grep -o -- '-----END [A-Z ]*-----' | head -1)
+            BODY=${KEY#*"$HEADER"}
+            BODY=${BODY%"$FOOTER"*}
+            { echo "$HEADER"; printf '%s' "$BODY" | tr -d ' \t\n' | fold -w 64; echo; echo "$FOOTER"; } | sed '/^$/d' > ~/.ssh/deploy_key
+          else
+            printf '%s' "$KEY" | tr -d ' \t\n' | base64 -d > ~/.ssh/deploy_key 2>/dev/null || true
+          fi
+          chmod 600 ~/.ssh/deploy_key
+          if ! ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null; then
+            echo "::error::VPS_SSH_KEY is not a valid private key."
+            exit 1
+          fi
+          echo "Using key: $(ssh-keygen -lf ~/.ssh/deploy_key)"
+          printf '%s\n' "$VPS_HOST_KEY" > ~/.ssh/known_hosts
+
+      # Earlier builds' hashed assets stay for 30 days, so a tab opened before this deploy keeps
+      # working. Content-hashed files never change under their name, so keeping them is safe.
+      - name: Sync build to the web root
+        run: |
+          RSYNC=(rsync -rltz --checksum --chmod=D755,F644 --chown=www-data:www-data \
+            --rsync-path="sudo rsync" -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes")
+          # 1. New hashed assets first, and nothing deleted.
+          "${RSYNC[@]}" dist/assets/ "$VPS_USER@$VPS_HOST:$WEB_ROOT/assets/"
+          # 2. Then index.html and the rest, deleting stale non-asset files; assets/ is excluded,
+          #    so it is protected from --delete.
+          "${RSYNC[@]}" --delete --exclude=/assets/ dist/ "$VPS_USER@$VPS_HOST:$WEB_ROOT/"
+          # 3. Prune hashed files no deploy has shipped in 30 days.
+          # Guard: never let an empty or unexpected WEB_ROOT turn this into a prune of /assets.
+          case "$WEB_ROOT" in /var/www/?*) ;; *) echo "::error::refusing to prune: WEB_ROOT='$WEB_ROOT'"; exit 1 ;; esac
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" \
+            "sudo find '$WEB_ROOT/assets' -type f -mtime +30 -delete"
+
+      # The page, the right build, the sample index, and the security policy.
+      - name: Smoke test
+        run: |
+          curl -fsS "$SITE_URL/" | grep -q "<title>repomapo</title>"
+          asset=$(grep -o '/assets/index-[A-Za-z0-9_-]*\.js' dist/index.html | head -1)
+          curl -fsSI "$SITE_URL$asset" | grep -qi "cache-control: public, max-age=31536000, immutable"
+          curl -fsS "$SITE_URL/data/sample.json" | grep -q '"symbols"'
+          # A missing index must be a 404, not the app's HTML: the app falls back to the sample on it.
+          [ "$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL/data/threads.json")" = "404" ]
+          curl -fsSI "$SITE_URL/" | grep -i "content-security-policy" | grep -q "default-src 'self'" || {
+            echo "::error::The live site has no Content-Security-Policy. Install deploy/nginx/repomapo-headers.conf on the VPS (DEPLOY.md, step 3), then rerun this job."
+            exit 1
+          }

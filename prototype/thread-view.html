@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Thread View</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+/* Layout: a working tool on top (inspector bar, three code panes with a thread overlay), the build plan underneath as a reading column. */
+:root {
+  --bg: #f2f5f3;
+  --surface: #fbfcfb;
+  --sunk: #e9eeeb;
+  --ink: #16201c;
+  --muted: #5c6b65;
+  --rule: #d3dbd6;
+  --kw: #3f5a8a;
+  --str: #2f7350;
+  --thread: #c41d68;
+  --pin0: #0a7b83;
+  --pin1: #9a5a00;
+  --pin2: #5a49d4;
+  --on-thread: #ffffff;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111615; --surface: #181f1d; --sunk: #0d1110; --ink: #e3ebe7; --muted: #8b9a94;
+    --rule: #2a3531; --kw: #8fb0e6; --str: #7fcf9f; --thread: #ff62a6;
+    --pin0: #3ccad2; --pin1: #f2a93d; --pin2: #a295ff; --on-thread: #14100f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111615; --surface: #181f1d; --sunk: #0d1110; --ink: #e3ebe7; --muted: #8b9a94;
+  --rule: #2a3531; --kw: #8fb0e6; --str: #7fcf9f; --thread: #ff62a6;
+  --pin0: #3ccad2; --pin1: #f2a93d; --pin2: #a295ff; --on-thread: #14100f;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--sans); font-size: 15px; line-height: 1.55;
+}
+.wrap {
+  max-width: 1560px; margin: 0 auto;
+  padding-block: 28px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 22px;
+}
+h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+h2 { font-size: 19px; font-weight: 600; margin: 0; text-wrap: balance; }
+h3 { font-size: 15px; font-weight: 600; margin: 0; }
+p { margin: 0; }
+.lede { color: var(--muted); max-width: 68ch; }
+header { display: flex; flex-direction: column; gap: 6px; }
+.views { display: flex; gap: 14px; font-size: 13px; }
+.views a { color: var(--muted); }
+.views [aria-current] { color: var(--ink); font-weight: 600; text-decoration: none; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--thread); outline-offset: 2px; }
+
+/* inspector */
+.bar {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 6px;
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;
+}
+.bar-top { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; min-height: 30px; }
+.who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; min-width: 0; }
+.kind { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.name { font-family: var(--mono); font-weight: 700; font-size: 15px; overflow-wrap: anywhere; }
+.meta { color: var(--muted); font-size: 13px; }
+.acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn {
+  background: transparent; border: 1px solid var(--rule); border-radius: 4px;
+  padding: 3px 10px; font-size: 13px; cursor: pointer;
+}
+.btn:hover { border-color: var(--muted); }
+.hops { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; min-height: 28px; align-items: center; }
+.hop {
+  flex: none; font-family: var(--mono); font-size: 12px; cursor: pointer;
+  background: var(--sunk); border: 1px solid transparent; border-radius: 4px; padding: 2px 8px;
+}
+.hop:hover { border-color: var(--muted); }
+.hop.is-def { border-color: var(--thread); }
+.hop.away { background: transparent; border: 1px dashed var(--rule); color: var(--muted); }
+.hop.away:hover { border-color: var(--muted); color: var(--ink); }
+.hops-label { flex: none; font-size: 12px; color: var(--muted); }
+.bar-foot { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; justify-content: space-between; border-top: 1px solid var(--rule); padding-top: 10px; }
+.pins { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); }
+.pin {
+  display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--ink);
+  border: 1px solid var(--c); border-radius: 4px; padding: 2px 4px 2px 8px;
+}
+.pin::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+.pin button { background: none; border: 0; cursor: pointer; padding: 0 4px; color: var(--muted); }
+.all { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; cursor: pointer; }
+.all input { accent-color: var(--thread); width: 15px; height: 15px; margin: 0; }
+
+/* stage */
+.work { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 26px; align-items: start; }
+.stage { position: relative; display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 26px; }
+.pane { min-width: 0; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; }
+.pane-head { position: relative; padding: 7px 34px 7px 12px; border-bottom: 1px solid var(--rule); display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; }
+.pane-head .x { position: absolute; top: 4px; right: 6px; background: none; border: 0; border-radius: 4px; cursor: pointer; padding: 0 7px; font-size: 16px; line-height: 24px; color: var(--muted); }
+.pane-head .x:hover { background: var(--sunk); color: var(--ink); }
+.pane-head b { font-family: var(--mono); font-size: 12.5px; font-weight: 700; }
+.pane-head span { font-family: var(--mono); font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.pane-body { position: relative; height: 480px; overflow: auto; padding: 8px 0; }
+.lines { position: relative; font-family: var(--mono); font-size: 12.5px; line-height: 20px; }
+.ln { position: absolute; left: 0; right: 0; height: 20px; display: flex; transition: opacity 0.15s; }
+.no { flex: none; box-sizing: border-box; width: calc(var(--digits, 3) * 1ch + 1ch); padding-right: 1ch; text-align: right; color: var(--muted); opacity: 0.7; user-select: none; }
+.code { white-space: pre; tab-size: 4; }
+.code .k { color: var(--kw); }
+.code .s { color: var(--str); }
+.code .a { color: var(--muted); }
+.tok { cursor: pointer; border-bottom: 1px dashed var(--muted); border-radius: 2px; padding: 0 2px; margin: 0 -2px; }
+.tok:hover { background: var(--sunk); }
+.tok.lit { background: color-mix(in srgb, var(--c) 20%, transparent); border-bottom: 1px solid var(--c); }
+.tok.lit.def { background: var(--c); color: var(--on-thread); font-weight: 700; }
+.stage.dim .ln { opacity: 0.36; }
+.stage.dim .ln.lit-line { opacity: 1; }
+.ln.flash { background: color-mix(in srgb, var(--thread) 22%, transparent); }
+#wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.gm { flex: none; width: 1ch; position: relative; }
+.lib { position: absolute; left: 0; top: 7px; width: 6px; height: 6px; padding: 0; border: 0; border-radius: 1px; background: var(--muted); opacity: 0.5; cursor: pointer; }
+.lib::before { content: ""; position: absolute; inset: -7px -4px; }
+.lib:hover, .lib.on { opacity: 1; background: var(--pin1); }
+#tags { position: absolute; inset: 0; pointer-events: none; }
+.tag, .key.count, .key.stub {
+  box-sizing: border-box; height: 18px; line-height: 16px; padding: 0 7px; border: 1px solid var(--c, var(--thread)); border-radius: 9px;
+  background: var(--surface); color: var(--ink); font-family: var(--mono); font-size: 11px; white-space: nowrap;
+}
+.tag { position: absolute; pointer-events: auto; cursor: pointer; display: flex; gap: 6px; align-items: center; }
+.tag span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.tag b, .key.count { color: var(--c, var(--thread)); font-weight: 700; }
+.tag.stub, .tag.more, .key.stub { border-style: dashed; }
+.tag.more { cursor: default; color: var(--muted); border-color: var(--rule); }
+.tag.more b { color: var(--muted); }
+.tag:not(.more):hover { background: var(--sunk); }
+.key { display: inline-block; vertical-align: -4px; margin-right: 6px; }
+.key.libmark { width: 6px; height: 6px; border-radius: 1px; background: var(--muted); vertical-align: 1px; }
+.hop.libchip { cursor: default; display: inline-flex; gap: 8px; align-items: baseline; }
+.hop.libchip:hover { border-color: transparent; }
+.hop.libchip i { font-style: normal; color: var(--muted); font-size: 11px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 13px; color: var(--muted); }
+.legend svg { vertical-align: -3px; margin-right: 6px; }
+
+/* plan */
+.plan { display: flex; flex-direction: column; gap: 18px; border-top: 1px solid var(--rule); padding-top: 26px; }
+.plan > * { max-width: 72ch; }
+.phases { margin: 0; padding: 0; list-style: none; counter-reset: ph; display: flex; flex-direction: column; gap: 16px; }
+.phases li { counter-increment: ph; display: grid; grid-template-columns: 2.2em minmax(0, 1fr); gap: 0 8px; }
+.phases li::before { content: counter(ph); font-family: var(--mono); font-weight: 700; color: var(--thread); }
+.phases li > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.done { font-size: 13.5px; color: var(--muted); }
+.done b { color: var(--ink); font-weight: 500; }
+.plain { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 8px; }
+.shape { max-width: 100%; overflow-x: auto; background: var(--sunk); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 14px; }
+.shape pre { margin: 0; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; }
+code { font-family: var(--mono); font-size: 0.9em; }
+
+.empty { grid-column: 1 / -1; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 18px; display: flex; flex-direction: column; gap: 8px; max-width: 72ch; }
+
+/* file list */
+.tree { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; display: flex; flex-direction: column; max-height: 524px; min-width: 0; }
+.tree input { margin: 8px; padding: 5px 8px; font: inherit; font-size: 13px; color: inherit; background: var(--sunk); border: 1px solid var(--rule); border-radius: 4px; min-width: 0; }
+.tree-scroll { overflow: auto; padding: 0 6px 8px; font-size: 13px; }
+.tree summary { cursor: pointer; padding: 2px 4px; border-radius: 4px; color: var(--muted); font-family: var(--mono); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tree summary:hover { color: var(--ink); }
+.tree .kids { padding-left: 12px; border-left: 1px solid var(--rule); margin-left: 8px; }
+.tfile { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: 4px; cursor: pointer; padding: 2px 6px; font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tfile:hover { background: var(--sunk); }
+.tfile.is-open { color: var(--thread); font-weight: 700; }
+.tfile span { display: block; font-weight: 400; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+.tree .meta { padding: 4px 6px; }
+
+@media (max-width: 880px) {
+  .work { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .tree { max-height: 220px; }
+  .stage { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .pane-body { height: 230px; }
+}
+@media (prefers-reduced-motion: reduce) { .ln { transition: none; } }
+</style>
+
+</head>
+<body style="margin:0">
+<div class="wrap">
+  <header>
+    <nav class="views" aria-label="Views"><a id="to-map" href="repo-map.html">Repo map</a><a href="thread-view.html" aria-current="page">Thread view</a></nav>
+    <h1>Thread View</h1>
+    <p class="lede">Hover any underlined name to see its threads. Click it to lock it and jump to its definition; if that file is not open, it opens. Up to four files stay open, and the one you used longest ago closes.</p>
+    <p class="lede" id="source"></p>
+  </header>
+
+  <section class="bar" aria-label="Selected symbol">
+    <div class="bar-top">
+      <div class="who" id="who"></div>
+      <div class="acts" id="acts"></div>
+    </div>
+    <div class="hops" id="hops"></div>
+    <div class="bar-foot">
+      <div class="pins" id="pins"></div>
+      <label class="all" for="all"><input type="checkbox" id="all"> <span>Draw all <b id="total"></b> threads at once</span></label>
+    </div>
+  </section>
+
+  <div class="work">
+    <nav class="tree" id="tree" aria-label="Files">
+      <input id="find" type="search" placeholder="Find a file" aria-label="Find a file">
+      <div class="tree-scroll"><div id="tree-list"></div><div id="found" hidden></div></div>
+    </nav>
+    <section class="stage" id="stage" aria-label="Code panes">
+      <svg id="wires" aria-hidden="true"></svg>
+      <div id="tags"></div>
+    </section>
+  </div>
+
+  <div class="legend">
+    <span><svg width="26" height="12"><rect x="1" y="1" width="24" height="10" rx="2" fill="var(--thread)"/></svg>definition</span>
+    <span><svg width="26" height="12"><line x1="1" y1="6" x2="20" y2="6" stroke="var(--thread)" stroke-width="1.6"/><circle cx="21" cy="6" r="3" fill="var(--thread)"/></svg>usage</span>
+    <span><svg width="26" height="12"><line x1="1" y1="6" x2="20" y2="6" stroke="var(--thread)" stroke-width="1.6" stroke-dasharray="3 3"/><circle cx="21" cy="6" r="3" fill="var(--surface)" stroke="var(--thread)" stroke-width="1.4"/></svg>usage scrolled out of view</span>
+    <span><span class="key count">×9</span>one thread per file, with a count</span>
+    <span><span class="key stub">File.java 4</span>usages in a file that is not open</span>
+    <span><span class="key libmark"></span>library symbols on that line</span>
+    <span>Esc clears the lock</span>
+  </div>
+
+  <section class="plan">
+    <h2>Build plan</h2>
+    <p>The prototype already reads the data shape below, so most of the work is producing that shape from a real repo.</p>
+
+    <ol class="phases">
+      <li><div>
+        <h3>Settle the feel on this page</h3>
+        <p>Play with hover, lock, pin, and the draw-everything toggle. Decide how many panes feel right and whether threads should always start at the definition or at whichever name you clicked.</p>
+        <p class="done"><b>Done when</b> you can say what you would change about the interaction.</p>
+      </div></li>
+      <li><div>
+        <h3>Get real edges from one repo</h3>
+        <p>Run a SCIP indexer (scip-java, which should cover Kotlin and Java) on one Spring Boot repo. Write a small script that turns the index into the JSON shape below. Check first that the indexer handles your Kotlin and Gradle versions.</p>
+        <p class="done"><b>Done when</b> ten symbols you spot-check have the same usages IntelliJ's Find Usages shows.</p>
+      </div></li>
+      <li><div>
+        <h3>Swap the hardcoded data for the JSON</h3>
+        <p>Add a file tree to open panes. Clicking a usage in a file that is not open opens it as a new pane, capped at four, oldest closes. Render only the visible lines so large files stay fast.</p>
+        <p class="done"><b>Done when</b> you can walk from a controller to the database call by clicking threads only.</p>
+      </div></li>
+      <li><div>
+        <h3>Add the rules that keep it readable</h3>
+        <p>A symbol with more than about 25 usages collapses to one thread per file with a count. Library symbols such as Spring and JDK types become a chip in the gutter with no threads. Usages outside the open panes show as stubs at the pane edge.</p>
+        <p class="done"><b>Done when</b> focusing the most-used class in the repo is still legible.</p>
+      </div></li>
+      <li><div>
+        <h3>Hook it into the repo graph</h3>
+        <p>Clicking a file node in the repo-level view opens that file here, so you zoom from the whole repo down to single lines.</p>
+        <p class="done"><b>Done when</b> the two views share one index and one URL scheme.</p>
+      </div></li>
+    </ol>
+
+    <h3>Data shape</h3>
+    <div class="shape"><pre>{
+  "files": [
+    { "path": "store/MessageStore.kt", "lines": ["package dev.example.relay.store", "..."] }
+  ],
+  "symbols": [
+    {
+      "id": "Envelope",
+      "kind": "class",
+      "def":  { "file": 2, "line": 7,  "col": 11, "len": 8 },
+      "refs": [
+        { "file": 0, "line": 14, "col": 32, "len": 8 },
+        { "file": 1, "line": 12, "col": 19, "len": 8 }
+      ]
+    }
+  ]
+}</pre></div>
+    <p class="done">Lines count from 1 and columns from 0. Columns come straight from the index, so overloads and same-named methods stay separate. The file also carries a <code>name</code> per symbol (the <code>id</code> is the full SCIP symbol) and a <code>meta</code> block with the indexer version and counts.</p>
+
+    <h3>What will bite</h3>
+    <ul class="plain">
+      <li><b>Spring injection.</b> A constructor parameter typed as an interface points at the interface, and the implementing class looks disconnected. You need the index's implementation relationships as a second edge type.</li>
+      <li><b>The indexer needs a building project.</b> It hooks into the compiler, so a repo that does not build gives you no index.</li>
+      <li><b>Index size.</b> Split the JSON per file and load a file's symbols when its pane opens.</li>
+      <li><b>Thread count.</b> Tick the draw-everything box above. That is three small files. Focus mode has to stay the default.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+// Thread view. Loads the JSON written by scripts/build-index.mjs.
+//   ?data=<url>      another JSON file (default data/threads.json)
+//   ?files=a,b,c     files to open as panes, matched against the end of the path
+//   ?sym=<path>:<line>:<col>   lock the symbol defined there (kept up to date as you click)
+//   ?at=<path>:<line>          scroll to this line once, opening the file if needed
+// repo-map.html reads the same ?data= and takes ?focus=<path>.
+const $ = s => document.querySelector(s);
+const stage = $("#stage"), svg = $("#wires"), tagsEl = $("#tags"), treeEl = $("#tree-list"), findEl = $("#find");
+const LH = 20, PAD = 8, TAB = 4, MAX_PANES = 4, OVERSCAN = 20, MAX_HOPS = 60;
+const COLLAPSE = 25;  // above this many usages a symbol draws one thread per file, with a count
+const MAX_STUBS = 5, STUB_W = 170, STUB_STEP = 22;
+const PIN_VARS = ["var(--pin0)", "var(--pin1)", "var(--pin2)"];
+
+let FILES = [], SYMS = [], META = {}, byId = {};
+let LIBS = [], libAt = []; // library symbols, and libAt[file] = Map(line -> [index into LIBS])
+let occ = [];     // occ[file] = Map(line -> [{sym, role, start, end}]) sorted by start
+let defsIn = [];  // defsIn[file] = symbols defined in that file
+const open = [];  // open panes: { file, used, scroll, body, linesEl, from, to, digits }
+let LINK = {};
+let clock = 0, cw = 7.5, flash = null;
+const state = { focus: null, hover: null, lib: null, pins: [null, null, null], all: false };
+
+const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const KEYWORDS = "package|import|class|data|fun|val|var|private|public|protected|internal|return|require|interface|object|enum|record|static|final|abstract|override|void|new|if|else|for|while|do|when|switch|case|try|catch|finally|throw|throws|extends|implements|this|super|null|true|false|in|is|as|suspend|companion|boolean|int|long|double";
+const HL = new RegExp('(&quot;(?:[^&]|&(?!quot;))*&quot;)|(@\\w+)|\\b(' + KEYWORDS + ')\\b', "g");
+function hl(s) {
+  return esc(s).replace(HL, (m, str, ann) => str ? '<span class="s">' + m + "</span>" : ann ? '<span class="a">' + m + "</span>" : '<span class="k">' + m + "</span>");
+}
+const base = p => p.slice(p.lastIndexOf("/") + 1);
+const dir = p => p.lastIndexOf("/") < 0 ? "" : p.slice(0, p.lastIndexOf("/"));
+// Visual column of a character offset: tabs advance to the next tab stop.
+function vis(text, col) {
+  let v = 0;
+  for (let i = 0; i < col && i < text.length; i++) v = text.charCodeAt(i) === 9 ? v + TAB - (v % TAB) : v + 1;
+  return v;
+}
+
+// ---------- data ----------
+
+async function load() {
+  const q = new URLSearchParams(location.search);
+  const url = q.get("data") || "data/threads.json";
+  LINK = { sym: q.get("sym"), at: q.get("at") }; // read now: the URL is rewritten as soon as panes render
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(url + " returned " + res.status);
+  const data = await res.json();
+  META = data.meta || {}; META.url = url;
+  FILES = data.files;
+  SYMS = data.symbols.map((s, i) => ({ id: "s" + i, scip: s.id, name: s.name || s.id, kind: s.kind || "symbol", def: s.def, refs: s.refs }));
+  byId = Object.fromEntries(SYMS.map(s => [s.id, s]));
+  occ = FILES.map(() => new Map()); defsIn = FILES.map(() => []);
+  const put = (o, sym, role) => {
+    const text = FILES[o.file] && FILES[o.file].lines[o.line - 1];
+    if (text == null || o.col + o.len > text.length) return; // index is older than the source
+    const m = occ[o.file]; let list = m.get(o.line);
+    if (!list) m.set(o.line, list = []);
+    list.push({ sym, role, start: o.col, end: o.col + o.len });
+  };
+  for (const s of SYMS) { defsIn[s.def.file].push(s); put(s.def, s.id, "def"); for (const r of s.refs) put(r, s.id, "ref"); }
+  for (const m of occ) for (const list of m.values()) list.sort((a, b) => a.start - b.start);
+  LIBS = data.libs || [];
+  libAt = FILES.map(f => new Map((f.libs || []).map(row => [row[0], row.slice(1)])));
+
+  // Which files open first: the ones asked for, else the three non-test files with the most threads.
+  const want = (q.get("files") || "").split(",").map(s => s.trim()).filter(Boolean);
+  let first = want.map(w => FILES.findIndex(f => f.path === w || f.path.endsWith("/" + w) || f.path.endsWith(w))).filter(i => i >= 0);
+  if (!first.length) {
+    const score = FILES.map(() => 0);
+    for (const s of SYMS) for (const r of s.refs) { score[r.file]++; if (r.file !== s.def.file) score[s.def.file]++; }
+    const isTest = i => /(^|\/)(test|tests|androidTest)\//.test(FILES[i].path);
+    first = FILES.map((_, i) => i).sort((x, y) => isTest(x) - isTest(y) || score[y] - score[x] || x - y).slice(0, 3).sort((x, y) => x - y);
+  }
+  for (const f of [...new Set(first)].slice(0, MAX_PANES)) open.push({ file: f, used: ++clock, scroll: 0 });
+}
+
+// ---------- panes ----------
+
+const paneOf = file => open.find(p => p.file === file);
+
+function measure() {
+  const probe = document.createElement("span");
+  probe.className = "lines"; probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre";
+  probe.textContent = "0".repeat(200);
+  stage.appendChild(probe);
+  cw = probe.getBoundingClientRect().width / 200 || cw;
+  probe.remove();
+}
+
+function renderPanes() {
+  for (const p of open) if (p.body && p.body.isConnected) p.scroll = p.body.scrollTop; // scroll events can lag behind
+  stage.querySelectorAll(".pane, .empty").forEach(e => e.remove());
+  stage.style.setProperty("--n", Math.max(1, open.length));
+  if (!open.length) {
+    const e = document.createElement("div"); e.className = "empty";
+    e.innerHTML = "<b>No files open.</b><p>Pick a file from the list.</p>";
+    stage.insertBefore(e, svg);
+  }
+  for (const p of open) {
+    const f = FILES[p.file];
+    if (f.width == null) f.width = f.lines.reduce((m, t) => Math.max(m, vis(t, t.length)), 0);
+    p.digits = Math.max(3, String(f.lines.length).length);
+    const pane = document.createElement("div");
+    pane.className = "pane"; pane.dataset.file = p.file;
+    pane.innerHTML = '<div class="pane-head"><b>' + esc(base(f.path)) + "</b><span>" + esc(dir(f.path)) + '</span><button class="x" data-close="' + p.file + '" aria-label="Close ' + esc(base(f.path)) + '">×</button></div>' +
+      '<div class="pane-body" tabindex="0" aria-label="' + esc(base(f.path)) + '"><div class="lines" style="height:' + f.lines.length * LH + "px;min-width:" + (f.width + p.digits + 4) + "ch;--digits:" + p.digits + '"></div></div>';
+    stage.insertBefore(pane, svg);
+    p.body = pane.querySelector(".pane-body"); p.linesEl = pane.querySelector(".lines"); p.from = p.to = -1;
+    p.body.scrollTop = p.scroll;
+    p.body.addEventListener("scroll", () => { p.scroll = p.body.scrollTop; if (renderRows(p)) paint(); redraw(); }, { passive: true });
+  }
+  for (const p of open) renderRows(p, true);
+  markTree(); syncUrl();
+  let total = 0;
+  for (const p of open) for (const s of defsIn[p.file]) for (const r of s.refs) if (paneOf(r.file)) total++;
+  $("#total").textContent = total;
+}
+
+// Only the lines near the viewport exist in the DOM. Returns true when rows were rebuilt.
+function renderRows(p, force) {
+  const lines = FILES[p.file].lines, n = lines.length;
+  const top = p.body.scrollTop, h = p.body.clientHeight || 480;
+  const a = Math.max(0, Math.floor((top - PAD) / LH)), b = Math.min(n, Math.ceil((top + h) / LH) + 1);
+  if (!force && (a >= p.from + 3 || p.from === 0) && (b <= p.to - 3 || p.to === n)) return false;
+  p.from = Math.max(0, a - OVERSCAN); p.to = Math.min(n, b + OVERSCAN);
+  let html = "";
+  for (let i = p.from; i < p.to; i++) {
+    const l = i + 1, text = lines[i], toks = occ[p.file].get(l) || [];
+    let out = "", at = 0;
+    for (const t of toks) {
+      if (t.start < at) continue;
+      out += hl(text.slice(at, t.start)) + '<span class="tok" role="button" tabindex="0" data-sym="' + t.sym + '" data-role="' + t.role + '">' + esc(text.slice(t.start, t.end)) + "</span>";
+      at = t.end;
+    }
+    out += hl(text.slice(at));
+    const libs = libAt[p.file].get(l);
+    const names = libs ? esc(libs.map(k => LIBS[k].name).join(", ")) : "";
+    const mark = libs ? '<button class="lib" data-lib="' + p.file + ":" + l + '" title="Library: ' + names + '" aria-label="Library symbols on line ' + l + ": " + names + '"></button>' : "";
+    html += '<div class="ln' + (flash === p.file + ":" + l ? " flash" : "") + '" style="top:' + i * LH + 'px"><span class="no">' + l + '</span><span class="gm">' + mark + '</span><span class="code">' + (out || " ") + "</span></div>";
+  }
+  p.linesEl.innerHTML = html;
+  return true;
+}
+
+function openFile(file) {
+  const have = paneOf(file);
+  if (have) { have.used = ++clock; return false; }
+  if (open.length >= MAX_PANES) open.splice(open.indexOf(open.reduce((x, y) => (y.used < x.used ? y : x))), 1); // least recently used
+  open.push({ file, used: ++clock, scroll: 0 });
+  renderPanes();
+  return true;
+}
+
+function closeFile(file) {
+  const i = open.findIndex(p => p.file === file);
+  if (i < 0) return;
+  open.splice(i, 1);
+  renderPanes(); update();
+}
+
+function syncUrl() {
+  const q = new URLSearchParams(location.search);
+  q.set("files", open.map(p => FILES[p.file].path).join(","));
+  q.delete("at");
+  const s = state.focus && byId[state.focus];
+  if (s) q.set("sym", FILES[s.def.file].path + ":" + s.def.line + ":" + s.def.col); else q.delete("sym");
+  const tidy = v => v.toString().replace(/%2F/g, "/").replace(/%2C/g, ",").replace(/%3A/g, ":");
+  try { history.replaceState(null, "", "?" + tidy(q)); } catch (e) { /* not allowed on some origins */ }
+  // The repo map link pins the file used most recently here.
+  const m = new URLSearchParams();
+  if (q.get("data")) m.set("data", q.get("data"));
+  if (open.length) m.set("focus", FILES[open.reduce((x, y) => (y.used > x.used ? y : x)).file].path);
+  $("#to-map").href = "repo-map.html" + (m.toString() ? "?" + tidy(m) : "");
+}
+
+// ---------- threads ----------
+
+function active() {
+  // [{id, color}] : pins first, then the hovered or locked symbol
+  const list = [];
+  state.pins.forEach((id, i) => { if (id) list.push({ id, color: PIN_VARS[i] }); });
+  const shown = state.hover || state.focus;
+  if (shown && !state.pins.includes(shown)) list.push({ id: shown, color: "var(--thread)" });
+  return list;
+}
+
+// Mark the rendered tokens of the active symbols.
+function paint() {
+  const color = new Map(active().map(a => [a.id, a.color]));
+  stage.querySelectorAll(".tok").forEach(el => {
+    const c = color.get(el.dataset.sym);
+    el.classList.toggle("lit", !!c);
+    el.classList.toggle("def", !!c && el.dataset.role === "def");
+    if (c) el.style.setProperty("--c", c); else el.style.removeProperty("--c");
+  });
+  stage.querySelectorAll(".ln").forEach(ln => ln.classList.toggle("lit-line", !!ln.querySelector(".tok.lit")));
+  stage.querySelectorAll(".lib").forEach(el => el.classList.toggle("on", el.dataset.lib === state.lib));
+  stage.classList.toggle("dim", color.size > 0 && !state.all);
+}
+
+// Where an occurrence sits inside the stage, computed from its line and column so it
+// works for lines that are not rendered. Returns null when its file is not open.
+function frames() {
+  const s = stage.getBoundingClientRect(), m = new Map();
+  for (const p of open) {
+    const r = p.body.getBoundingClientRect();
+    m.set(p.file, { p, top: r.top - s.top, bottom: r.bottom - s.top, left: r.left - s.left, right: r.left - s.left + p.body.clientWidth });
+  }
+  return m;
+}
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+function point(o, fr) {
+  const f = fr.get(o.file); if (!f) return null;
+  const text = FILES[o.file].lines[o.line - 1] || "";
+  const x0 = f.left - f.p.body.scrollLeft + (f.p.digits + 2) * cw;
+  const cy = f.top + PAD - f.p.body.scrollTop + (o.line - 1) * LH + LH / 2;
+  const xl = x0 + vis(text, o.col) * cw - 2, xr = x0 + vis(text, o.col + o.len) * cw + 2;
+  const y = clamp(cy, f.top + 3, f.bottom - 3);
+  return { y, l: clamp(xl, f.left + 3, f.right - 3), r: clamp(xr, f.left + 3, f.right - 3), off: y !== cy || xr < f.left || xl > f.right, pl: f.left, pr: f.right, pt: f.top, pb: f.bottom, pane: f.p };
+}
+
+function wire(a, b, color, faint, W) {
+  if (a.off && b.off && a.pane === b.pane && Math.abs(a.y - b.y) < 2) return "";
+  let d, ex;
+  if (a.pane !== b.pane && b.pl >= a.pr - 1) {
+    ex = b.l; const k = Math.max(36, (ex - a.r) * 0.5);
+    d = "M" + a.r + "," + a.y + " C" + (a.r + k) + "," + a.y + " " + (ex - k) + "," + b.y + " " + ex + "," + b.y;
+  } else if (a.pane !== b.pane && a.pl >= b.pr - 1) {
+    ex = b.r; const k = Math.max(36, (a.l - ex) * 0.5);
+    d = "M" + a.l + "," + a.y + " C" + (a.l - k) + "," + a.y + " " + (ex + k) + "," + b.y + " " + ex + "," + b.y;
+  } else {
+    ex = b.r;
+    const bx = Math.min(W - 4, Math.max(a.r, ex) + 28 + Math.min(70, Math.abs(a.y - b.y) * 0.25));
+    d = "M" + a.r + "," + a.y + " C" + bx + "," + a.y + " " + bx + "," + b.y + " " + ex + "," + b.y;
+  }
+  const dash = (a.off || b.off) ? ' stroke-dasharray="4 4"' : "";
+  if (faint) return '<path d="' + d + '" fill="none" style="stroke:var(--muted)" stroke-width="1" stroke-opacity="0.55"' + dash + "/>";
+  const dot = b.off
+    ? '<circle cx="' + ex + '" cy="' + b.y + '" r="3.2" style="fill:var(--surface);stroke:' + color + '" stroke-width="1.5"/>'
+    : '<circle cx="' + ex + '" cy="' + b.y + '" r="3.2" style="fill:' + color + '"/>';
+  return '<path d="' + d + '" fill="none" style="stroke:' + color + '" stroke-width="1.7" stroke-linecap="round"' + dash + "/>" + dot;
+}
+
+function draw() {
+  const W = stage.getBoundingClientRect().width, fr = frames();
+  let out = "";
+  if (state.all) {
+    for (const p of open) for (const s of defsIn[p.file]) {
+      const a = point(s.def, fr);
+      for (const r of s.refs) { const b = point(r, fr); if (b && !(a.off && b.off)) out += wire(a, b, "", true, W); }
+    }
+  }
+  let tags = "";
+  const shown = state.hover || state.focus;
+  const stubX = pt => pt.pr - 6 - STUB_W;
+  for (const { id, color } of active()) {
+    const s = byId[id], a = point(s.def, fr), main = id === shown;
+    const byFile = new Map();
+    for (const r of s.refs) { if (!byFile.has(r.file)) byFile.set(r.file, []); byFile.get(r.file).push(r); }
+    // The usage that stands for a file: the first one on screen, else the first one.
+    const pick = list => { const pts = list.map(r => point(r, fr)); let i = pts.findIndex(q => !q.off); if (i < 0) i = 0; return { i, b: pts[i] }; };
+
+    if (!a) {
+      // Definition's file is not open: each pane that uses the symbol gets a stub that opens it.
+      if (!main) continue;
+      for (const [file, list] of byFile) {
+        if (!fr.has(file)) continue;
+        const { b } = pick(list), x = stubX(b);
+        if (x > b.r + 12) out += '<path d="M' + b.r + "," + b.y + " L" + x + "," + b.y + '" fill="none" style="stroke:' + color + '" stroke-width="1.4" stroke-dasharray="3 3"/>';
+        tags += '<button class="tag stub" style="left:' + x + "px;top:" + (b.y - 9) + "px;width:" + STUB_W + "px;--c:" + color + '" data-hop="' + key(s.def) + '" title="Opens ' + esc(FILES[s.def.file].path) + '"><span>defined in ' + where(s.def) + "</span></button>";
+      }
+      continue;
+    }
+
+    const collapsed = s.refs.length > COLLAPSE;
+    for (const [file, list] of byFile) {
+      if (!fr.has(file)) continue;
+      if (!collapsed) { for (const r of list) out += wire(a, point(r, fr), color, false, W); continue; }
+      // One thread per file, ending on a count that steps to the next usage when clicked.
+      const { i, b } = pick(list);
+      out += wire(a, b, color, false, W);
+      if (list.length > 1) {
+        let n = (i + 1) % list.length;
+        while (n !== i && list[n].line === list[i].line) n = (n + 1) % list.length; // skip a second usage on the same line
+        const next = list[n];
+        tags += '<button class="tag count" style="left:' + Math.min(b.r + 7, b.pr - 44) + "px;top:" + (b.y - 9) + "px;--c:" + color + '" data-hop="' + key(next) + '" title="' + list.length + ' usages in this file. Click for the next one."><b>×' + list.length + "</b></button>";
+      }
+    }
+
+    // Usages in files that are not open: stubs at the edge of the definition's pane, busiest first.
+    if (!main) continue;
+    const away = [...byFile].filter(([file]) => !fr.has(file)).sort((x, y) => y[1].length - x[1].length);
+    if (!away.length) continue;
+    const rows = Math.min(MAX_STUBS, away.length) + (away.length > MAX_STUBS ? 1 : 0), x = stubX(a);
+    let y = clamp(a.r > x - 16 ? a.y + STUB_STEP : a.y, a.pt + 14, Math.max(a.pt + 14, a.pb - 14 - (rows - 1) * STUB_STEP));
+    for (const [file, list] of away.slice(0, MAX_STUBS)) {
+      if (x > a.r + 12) { const mid = (a.r + x) / 2; out += '<path d="M' + a.r + "," + a.y + " C" + mid + "," + a.y + " " + mid + "," + y + " " + x + "," + y + '" fill="none" style="stroke:' + color + '" stroke-width="1.4" stroke-dasharray="3 3"/>'; }
+      tags += '<button class="tag stub" style="left:' + x + "px;top:" + (y - 9) + "px;width:" + STUB_W + "px;--c:" + color + '" data-hop="' + key(list[0]) + '" title="Opens ' + esc(FILES[file].path) + '"><span>' + esc(base(FILES[file].path)) + "</span><b>" + list.length + "</b></button>";
+      y += STUB_STEP;
+    }
+    if (away.length > MAX_STUBS) {
+      const rest = away.slice(MAX_STUBS);
+      tags += '<span class="tag more" style="left:' + x + "px;top:" + (y - 9) + "px;width:" + STUB_W + 'px"><span>and ' + rest.length + (rest.length === 1 ? " more file" : " more files") + "</span><b>" + rest.reduce((n, e) => n + e[1].length, 0) + "</b></span>";
+    }
+  }
+  tagsEl.innerHTML = tags;
+  svg.innerHTML = out;
+}
+
+// ---------- inspector ----------
+
+const key = o => o.file + ":" + o.line;
+const where = o => esc(base(FILES[o.file].path)) + ":" + o.line;
+
+function renderBar() {
+  const id = state.hover || state.focus;
+  if (!id && state.lib) {
+    // A gutter mark was clicked: list the library symbols used on that line.
+    const [file, line] = state.lib.split(":").map(Number), list = libAt[file].get(line) || [];
+    $("#who").innerHTML = '<span class="kind">library</span><span class="name">' + where({ file, line }) + '</span><span class="meta">' +
+      list.length + (list.length === 1 ? " library symbol" : " library symbols") + " on this line. Libraries get no threads.</span>";
+    $("#acts").innerHTML = '<button class="btn" data-act="clear">Clear</button>';
+    $("#hops").innerHTML = list.map(k => '<span class="hop libchip">' + esc(LIBS[k].name) + "<i>" + esc(LIBS[k].pkg || "unknown package") + " · " + LIBS[k].uses + (LIBS[k].uses === 1 ? " use" : " uses") + "</i></span>").join("");
+  } else if (!id) {
+    $("#who").innerHTML = '<span class="meta">Nothing selected. Hover or click an underlined name in the code.</span>';
+    $("#acts").innerHTML = ""; $("#hops").innerHTML = "";
+  } else {
+    const s = byId[id], files = new Set(s.refs.map(r => r.file)).size, away = s.refs.filter(r => !paneOf(r.file)).length;
+    $("#who").innerHTML = '<span class="kind">' + esc(s.kind) + '</span><span class="name">' + esc(s.name) + '</span><span class="meta">' +
+      s.refs.length + (s.refs.length === 1 ? " usage" : " usages") + " in " + files + (files === 1 ? " file" : " files") +
+      (away ? ", " + away + " in files not open" : "") + (s.refs.length > COLLAPSE ? ". One thread per file" : "") + (paneOf(s.def.file) ? "" : ". Defined in " + where(s.def) + ", not open") + "</span>";
+    const pinned = state.pins.includes(id), full = state.pins.every(Boolean);
+    $("#acts").innerHTML = (state.focus === id
+      ? '<button class="btn" id="btn-pin" data-act="pin"' + (!pinned && full ? " disabled" : "") + ">" + (pinned ? "Unpin" : "Pin") + '</button><button class="btn" id="btn-clear" data-act="clear">Clear</button>'
+      : '<span class="meta">Click to lock</span>');
+    // Usages in open panes first, then the rest; a chip for a file that is not open opens it.
+    const refs = s.refs.slice().sort((x, y) => !paneOf(x.file) - !paneOf(y.file));
+    const chip = (o, cls, label) => '<button class="hop' + cls + (paneOf(o.file) ? "" : " away") + '" data-hop="' + key(o) + '"' + (paneOf(o.file) ? "" : ' title="Opens ' + esc(FILES[o.file].path) + '"') + ">" + label + where(o) + "</button>";
+    $("#hops").innerHTML = '<span class="hops-label">Jump to</span>' + chip(s.def, " is-def", "defined ") +
+      refs.slice(0, MAX_HOPS).map(r => chip(r, "", "")).join("") +
+      (refs.length > MAX_HOPS ? '<span class="hops-label">and ' + (refs.length - MAX_HOPS) + " more</span>" : "");
+  }
+  const pins = state.pins.map((p, i) => p ? '<span class="pin" style="--c:' + PIN_VARS[i] + '">' + esc(byId[p].name) + '<button data-unpin="' + i + '" aria-label="Unpin ' + esc(byId[p].name) + '">×</button></span>' : "").join("");
+  $("#pins").innerHTML = pins ? "Pinned " + pins : "Pin up to three symbols to compare their threads.";
+}
+
+function update() { renderBar(); paint(); draw(); syncUrl(); }
+
+const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function reveal(o, doFlash) {
+  openFile(o.file);
+  const p = paneOf(o.file), top = PAD + (o.line - 1) * LH;
+  const seen = top >= p.body.scrollTop && top + LH <= p.body.scrollTop + p.body.clientHeight;
+  if (doFlash) {
+    flash = key(o);
+    setTimeout(() => { if (flash === key(o)) { flash = null; stage.querySelectorAll(".ln.flash").forEach(e => e.classList.remove("flash")); } }, 900);
+    renderRows(p, true);
+  }
+  if (!seen) p.body.scrollTo({ top: Math.max(0, top - p.body.clientHeight / 2), behavior: calm ? "auto" : "smooth" });
+}
+
+// ---------- file list ----------
+
+function buildTree() {
+  const root = { dirs: new Map(), files: [] };
+  FILES.forEach((f, i) => {
+    const parts = f.path.split("/"); let node = root;
+    for (const part of parts.slice(0, -1)) { if (!node.dirs.has(part)) node.dirs.set(part, { dirs: new Map(), files: [] }); node = node.dirs.get(part); }
+    node.files.push(i);
+  });
+  const openDirs = open.map(p => dir(FILES[p.file].path) + "/");
+  const render = (node, prefix) => {
+    let html = "";
+    for (let [name, child] of [...node.dirs].sort((a, b) => a[0].localeCompare(b[0]))) {
+      // fold chains of single folders into one row: src/main/java/com/example
+      while (child.dirs.size === 1 && !child.files.length) { const [n, c] = [...child.dirs][0]; name += "/" + n; child = c; }
+      const path = prefix + name + "/";
+      html += "<details" + (openDirs.some(d => d.startsWith(path)) ? " open" : "") + ' data-dir="' + esc(path) + '"><summary>' + esc(name) + '</summary><div class="kids">' + render(child, path) + "</div></details>";
+    }
+    for (const i of node.files.sort((a, b) => FILES[a].path.localeCompare(FILES[b].path))) html += fileRow(i, false);
+    return html;
+  };
+  treeEl.innerHTML = render(root, "");
+}
+const fileRow = (i, full) => '<button class="tfile" data-file="' + i + '" title="' + esc(FILES[i].path) + '">' + esc(base(FILES[i].path)) + (full ? '<span>' + esc(dir(FILES[i].path)) + "</span>" : "") + "</button>";
+
+function markTree() {
+  document.querySelectorAll(".tfile").forEach(b => {
+    const on = !!paneOf(+b.dataset.file);
+    b.classList.toggle("is-open", on);
+    if (on) for (let d = b.closest("details"); d; d = d.parentElement.closest("details")) d.open = true;
+  });
+}
+
+function filterFiles() {
+  const q = findEl.value.trim().toLowerCase(), found = $("#found");
+  treeEl.hidden = !!q; found.hidden = !q;
+  if (!q) return;
+  const hits = FILES.map((f, i) => i).filter(i => FILES[i].path.toLowerCase().includes(q));
+  found.innerHTML = hits.length ? hits.slice(0, 80).map(i => fileRow(i, true)).join("") + (hits.length > 80 ? '<p class="meta">and ' + (hits.length - 80) + " more</p>" : "") : '<p class="meta">No file matches.</p>';
+  markTree();
+}
+
+// ---------- wiring it up ----------
+
+let raf = 0;
+const redraw = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); };
+
+function start() {
+  measure();
+  buildTree();
+  renderPanes();
+
+  stage.addEventListener("click", e => {
+    const shut = e.target.closest("[data-close]");
+    if (shut) { closeFile(+shut.dataset.close); return; }
+    const tag = e.target.closest(".tag[data-hop]");
+    if (tag) { const [file, line] = tag.dataset.hop.split(":").map(Number); reveal({ file, line }, true); update(); return; }
+    const lib = e.target.closest(".lib");
+    if (lib) { state.lib = state.lib === lib.dataset.lib ? null : lib.dataset.lib; state.focus = null; state.hover = null; update(); return; }
+    const pane = e.target.closest(".pane");
+    if (pane && paneOf(+pane.dataset.file)) paneOf(+pane.dataset.file).used = ++clock;
+    const t = e.target.closest(".tok"); if (!t) return;
+    const id = t.dataset.sym;
+    state.focus = state.focus === id ? null : id;
+    state.hover = null;
+    if (state.focus) reveal(byId[id].def, false); // opens the definition's file if it is not open
+    update();
+  });
+  stage.addEventListener("keydown", e => {
+    if ((e.key === "Enter" || e.key === " ") && e.target.classList.contains("tok")) { e.preventDefault(); e.target.click(); }
+  });
+  stage.addEventListener("mouseover", e => {
+    const t = e.target.closest(".tok"); if (!t || state.hover === t.dataset.sym) return;
+    state.hover = t.dataset.sym; update();
+  });
+  stage.addEventListener("mouseout", e => {
+    if (!e.target.closest(".tok") || !state.hover) return;
+    state.hover = null; update();
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && (state.focus || state.lib)) { state.focus = null; state.lib = null; update(); } });
+
+  document.querySelector(".bar").addEventListener("click", e => {
+    const hop = e.target.closest("[data-hop]"), act = e.target.closest("[data-act]"), un = e.target.closest("[data-unpin]");
+    if (hop) { const [file, line] = hop.dataset.hop.split(":").map(Number); reveal({ file, line }, true); update(); }
+    else if (un) { state.pins[+un.dataset.unpin] = null; update(); }
+    else if (act && act.dataset.act === "clear") { state.focus = null; state.lib = null; update(); }
+    else if (act && act.dataset.act === "pin" && state.focus) {
+      const i = state.pins.indexOf(state.focus);
+      if (i >= 0) state.pins[i] = null;
+      else { const free = state.pins.indexOf(null); if (free >= 0) state.pins[free] = state.focus; }
+      update();
+    }
+  });
+  $("#all").addEventListener("change", e => { state.all = e.target.checked; paint(); draw(); });
+
+  $("#tree").addEventListener("click", e => {
+    const b = e.target.closest(".tfile"); if (!b) return;
+    reveal({ file: +b.dataset.file, line: 1 }, false); update();
+  });
+  findEl.addEventListener("input", filterFiles);
+
+  window.addEventListener("resize", redraw);
+  if (window.ResizeObserver) new ResizeObserver(() => { for (const p of open) renderRows(p); paint(); redraw(); }).observe(stage);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { measure(); redraw(); });
+
+  // Start locked on the symbol with the most usages across the open panes.
+  let best = null, most = 0;
+  for (const p of open) for (const s of defsIn[p.file]) { const n = s.refs.filter(r => paneOf(r.file)).length; if (n > most) { most = n; best = s; } }
+  // ?sym= and ?at= from the URL win over that default.
+  const fileOf = path => FILES.findIndex(f => f.path === path || f.path.endsWith("/" + path));
+  const parse = v => { const m = /^(.*?):(\d+)(?::(\d+))?$/.exec(v || ""); return m && fileOf(m[1]) >= 0 ? { file: fileOf(m[1]), line: +m[2], col: m[3] == null ? null : +m[3] } : null; };
+  const sym = parse(LINK.sym), at = parse(LINK.at);
+  const linked = sym && SYMS.find(s => s.def.file === sym.file && s.def.line === sym.line && (sym.col == null || s.def.col === sym.col));
+  if (linked) { openFile(linked.def.file); best = linked; }
+  state.focus = best ? best.id : null;
+  if (at) { openFile(at.file); const p = paneOf(at.file); p.body.scrollTop = Math.max(0, PAD + (at.line - 1) * LH - p.body.clientHeight / 3); p.scroll = p.body.scrollTop; flash = key(at); setTimeout(() => { flash = null; stage.querySelectorAll(".ln.flash").forEach(e => e.classList.remove("flash")); }, 1500); renderRows(p, true); }
+  else if (best) { const p = paneOf(best.def.file); p.body.scrollTop = Math.max(0, PAD + (best.def.line - 1) * LH - p.body.clientHeight / 3); p.scroll = p.body.scrollTop; renderRows(p); }
+  const st = META.stats || {};
+  $("#source").textContent = FILES.length + (FILES.length === 1 ? " file" : " files") + " from " + META.url +
+    (META.tool ? ", indexed by " + META.tool + (META.toolVersion ? " " + META.toolVersion : "") : "") +
+    (st.symbols != null ? " (" + st.symbols + " symbols, " + st.refs + " usages)." : ".");
+  update();
+}
+
+load().then(start).catch(err => {
+  document.querySelector(".bar").hidden = true;
+  document.querySelector(".legend").hidden = true;
+  $("#tree").hidden = true;
+  stage.innerHTML = '<div class="empty"><b>No index loaded.</b><p>' + esc(String(err.message || err)) + '</p>' +
+    '<p>Build it with <code>node scripts/build-index.mjs</code>, then open this page through a local server (<code>python3 -m http.server 4173</code>). Browsers block loading the JSON from a file:// page.</p></div>';
+});
+</script>
+</body>
+</html>

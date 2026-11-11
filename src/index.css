@@ -1,0 +1,151 @@
+@import "tailwindcss";
+
+/*
+ * Colours are plain custom properties that flip with the system theme; the Tailwind tokens below
+ * read them, so bg-surface, text-muted, border-rule and friends follow along. The code panes and
+ * the threads over them are built outside React (src/threads/stage.ts) and styled by the plain
+ * rules at the end of this file.
+ */
+:root {
+  --bg: #f2f5f3;
+  --surface: #fbfcfb;
+  /* toolbars and side panels: a second neutral, a touch warmer than the code surface */
+  --panel: #f5f6f0;
+  --sunk: #e9eeeb;
+  --ink: #16201c;
+  --muted: #5c6b65;
+  --rule: #d3dbd6;
+  --kw: #3f5a8a;
+  --str: #2f7350;
+  --thread: #c41d68;
+  --pin0: #0a7b83;
+  --pin1: #9a5a00;
+  --pin2: #5a49d4;
+  --on-thread: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111615;
+    --surface: #181f1d;
+    --panel: #1c201b;
+    --sunk: #0d1110;
+    --ink: #e3ebe7;
+    --muted: #8b9a94;
+    --rule: #2a3531;
+    --kw: #8fb0e6;
+    --str: #7fcf9f;
+    --thread: #ff62a6;
+    --pin0: #3ccad2;
+    --pin1: #f2a93d;
+    --pin2: #a295ff;
+    --on-thread: #14100f;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-panel: var(--panel);
+  --color-sunk: var(--sunk);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-rule: var(--rule);
+  --color-thread: var(--thread);
+  --color-on-thread: var(--on-thread);
+  --color-pin0: var(--pin0);
+  --color-pin1: var(--pin1);
+  --color-pin2: var(--pin2);
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+:focus-visible { outline: 2px solid var(--thread); outline-offset: 2px; }
+button { cursor: pointer; }
+button:disabled { cursor: default; opacity: 0.5; }
+
+/* The parts of the page the browser draws follow the palette too. */
+html { scrollbar-color: var(--rule) transparent; }
+::selection { background: color-mix(in srgb, var(--thread) 26%, transparent); }
+input { caret-color: var(--thread); }
+input::placeholder { color: var(--muted); opacity: 1; }
+a { text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.pane-body, .tree-scroll, .hops { scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
+
+/* One button, used everywhere a bordered button appears. */
+.btn { border: 1px solid var(--rule); border-radius: 4px; background: transparent; color: var(--ink); padding: 2px 10px; font-size: 13px; transition: border-color 150ms, background-color 150ms; }
+.btn:hover:not(:disabled) { border-color: var(--muted); }
+.btn:active:not(:disabled) { background: var(--sunk); }
+.icon-btn { display: inline-grid; place-items: center; border: 0; border-radius: 4px; background: none; color: var(--muted); transition: color 150ms, background-color 150ms; }
+.icon-btn:hover { background: var(--sunk); color: var(--ink); }
+.icon-btn:active { color: var(--thread); }
+
+/* Loading: the shape of what is coming, not a spinner. */
+.skeleton { border-radius: 6px; background: var(--panel); border: 1px solid var(--rule); }
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton { animation: breathe 1.4s ease-in-out infinite alternate; }
+  @keyframes breathe { from { opacity: 0.55; } to { opacity: 1; } }
+}
+
+/* ---------- thread stage (src/threads/stage.ts) ---------- */
+
+.stage { position: relative; display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 26px; min-width: 0; }
+.stage .wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.stage .tags { position: absolute; inset: 0; pointer-events: none; }
+.stage .empty { grid-column: 1 / -1; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 18px; }
+.stage .empty p { margin: 0; color: var(--muted); }
+
+.pane { min-width: 0; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; }
+.pane-head { position: relative; padding: 7px 34px 7px 12px; border-bottom: 1px solid var(--rule); display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; }
+.pane-head b { font-family: var(--font-mono); font-size: 12.5px; font-weight: 700; }
+.pane-head span { font-family: var(--font-mono); font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.pane-head .x { position: absolute; top: 5px; right: 6px; width: 24px; height: 24px; }
+.pane-body { position: relative; height: 480px; overflow: auto; padding: 8px 0; }
+
+.lines { position: relative; font-family: var(--font-mono); font-size: 12.5px; line-height: 20px; }
+.ln { position: absolute; left: 0; right: 0; height: 20px; display: flex; transition: opacity 0.15s; }
+.no { flex: none; box-sizing: border-box; width: calc(var(--digits, 3) * 1ch + 1ch); padding-right: 1ch; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; user-select: none; }
+.gm { flex: none; width: 1ch; position: relative; }
+.lib { position: absolute; left: 0; top: 7px; width: 6px; height: 6px; padding: 0; border: 0; border-radius: 1px; background: var(--muted); opacity: 0.5; }
+.lib::before { content: ""; position: absolute; inset: -7px -4px; }
+.lib:hover, .lib.on { opacity: 1; background: var(--pin1); }
+.code { white-space: pre; tab-size: 4; }
+.code .k { color: var(--kw); }
+.code .s { color: var(--str); }
+.code .a { color: var(--muted); }
+.tok { cursor: pointer; border-bottom: 1px dashed var(--muted); border-radius: 2px; padding: 0 2px; margin: 0 -2px; }
+.tok:hover { background: var(--sunk); }
+.tok:active { background: color-mix(in srgb, var(--thread) 18%, transparent); }
+.tok.lit { background: color-mix(in srgb, var(--c) 20%, transparent); border-bottom: 1px solid var(--c); }
+.tok.lit.def { background: var(--c); color: var(--on-thread); font-weight: 700; }
+.stage.dim .ln { opacity: 0.36; }
+.stage.dim .ln.lit-line { opacity: 1; }
+.ln.flash { background: color-mix(in srgb, var(--thread) 22%, transparent); }
+
+.tag {
+  position: absolute; pointer-events: auto; box-sizing: border-box; height: 18px; line-height: 16px; padding: 0 7px;
+  display: flex; gap: 6px; align-items: center; border: 1px solid var(--c, var(--thread)); border-radius: 9px;
+  background: var(--surface); color: var(--ink); font-family: var(--font-mono); font-size: 11px; white-space: nowrap;
+  font-variant-numeric: tabular-nums; box-shadow: 0 1px 3px rgb(0 0 0 / 0.16); transition: background-color 150ms;
+}
+.tag span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.tag b { color: var(--c, var(--thread)); font-weight: 700; }
+.tag.stub, .tag.more { border-style: dashed; }
+.tag.more { cursor: default; color: var(--muted); border-color: var(--rule); box-shadow: none; }
+.tag.more b { color: var(--muted); }
+.tag:not(.more):hover { background: var(--sunk); }
+
+@media (max-width: 880px) {
+  .stage { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .pane-body { height: 230px; }
+}
+@media (prefers-reduced-motion: reduce) { .ln { transition: none; } }

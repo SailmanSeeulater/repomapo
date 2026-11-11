@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Repo Map</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+/* Same tokens as thread-view.html. Layout: inspector bar on top, then one box per folder with a row per file. */
+:root {
+  --bg: #f2f5f3; --surface: #fbfcfb; --sunk: #e9eeeb; --ink: #16201c; --muted: #5c6b65; --rule: #d3dbd6;
+  --thread: #c41d68; --pin0: #0a7b83; --pin1: #9a5a00;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111615; --surface: #181f1d; --sunk: #0d1110; --ink: #e3ebe7; --muted: #8b9a94; --rule: #2a3531;
+    --thread: #ff62a6; --pin0: #3ccad2; --pin1: #f2a93d; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111615; --surface: #181f1d; --sunk: #0d1110; --ink: #e3ebe7; --muted: #8b9a94; --rule: #2a3531;
+  --thread: #ff62a6; --pin0: #3ccad2; --pin1: #f2a93d; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.55; }
+.wrap {
+  max-width: 1560px; margin: 0 auto; padding-block: 28px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 22px;
+}
+h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+p { margin: 0; }
+.lede { color: var(--muted); max-width: 68ch; }
+header { display: flex; flex-direction: column; gap: 6px; }
+.views { display: flex; gap: 14px; font-size: 13px; }
+.views a { color: var(--muted); }
+.views [aria-current] { color: var(--ink); font-weight: 600; text-decoration: none; }
+:focus-visible { outline: 2px solid var(--thread); outline-offset: 2px; }
+code { font-family: var(--mono); font-size: 0.9em; }
+
+.bar { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.bar-top { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; min-height: 30px; }
+.who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; min-width: 0; }
+.kind { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.name { font-family: var(--mono); font-weight: 700; font-size: 15px; overflow-wrap: anywhere; }
+.meta { color: var(--muted); font-size: 13px; }
+.tools { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; font-size: 13px; }
+.tools input[type="search"] { font: inherit; font-size: 13px; color: inherit; background: var(--sunk); border: 1px solid var(--rule); border-radius: 4px; padding: 4px 8px; width: 200px; max-width: 100%; }
+.tools label { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; }
+.tools input[type="checkbox"] { accent-color: var(--thread); width: 15px; height: 15px; margin: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 10px; }
+.legend svg { vertical-align: -3px; margin-right: 6px; }
+
+#map { display: block; width: 100%; overflow: visible; }
+.box { fill: var(--surface); stroke: var(--rule); }
+.title { font-family: var(--mono); font-size: 11px; fill: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.node { cursor: pointer; text-decoration: none; }
+.node .hit { fill: transparent; }
+.node .heat { fill: var(--muted); opacity: 0.16; }
+.node text { font-family: var(--mono); font-size: 11.5px; fill: var(--ink); }
+.node .n { fill: var(--muted); font-size: 10.5px; text-anchor: end; }
+.node:hover .hit, .node:focus .hit { fill: var(--sunk); }
+.node:focus { outline: none; }
+.node.match .hit { fill: color-mix(in srgb, var(--pin1) 22%, transparent); }
+#map.focus .node { opacity: 0.32; }
+#map.focus .node.self, #map.focus .node.out, #map.focus .node.in { opacity: 1; }
+.node.self .hit { fill: var(--ink); }
+.node.self text { fill: var(--surface); font-weight: 700; }
+.node.self .heat { opacity: 0; }
+.node.out .n { fill: var(--pin0); font-weight: 700; }
+.node.in .n { fill: var(--thread); font-weight: 700; }
+.node.out.in .n { fill: var(--ink); }
+#edges, #flows { pointer-events: none; }
+#map.focus #flows { display: none; }
+.empty { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 18px; display: flex; flex-direction: column; gap: 8px; max-width: 72ch; }
+@media (prefers-reduced-motion: no-preference) { .node { transition: opacity 0.12s; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <nav class="views" aria-label="Views"><a href="repo-map.html" aria-current="page">Repo map</a><a id="to-threads" href="thread-view.html">Thread view</a></nav>
+    <h1>Repo Map</h1>
+    <p class="lede">Every file in the index, grouped by folder. Hover a file to see which files it uses and which use it. Click it to open it in the thread view.</p>
+    <p class="lede" id="source"></p>
+  </header>
+
+  <section class="bar" aria-label="Selected file">
+    <div class="bar-top">
+      <div class="who" id="who"></div>
+      <div class="tools">
+        <input id="find" type="search" placeholder="Find a file" aria-label="Find a file">
+        <label for="tests"><input type="checkbox" id="tests" checked> Show test files</label>
+      </div>
+    </div>
+    <div class="legend">
+      <span><svg width="26" height="12"><line x1="1" y1="6" x2="20" y2="6" stroke="var(--pin0)" stroke-width="1.6"/><circle cx="21" cy="6" r="3" fill="var(--pin0)"/></svg>uses (symbols defined in that file)</span>
+      <span><svg width="26" height="12"><line x1="1" y1="6" x2="20" y2="6" stroke="var(--thread)" stroke-width="1.6"/><circle cx="21" cy="6" r="3" fill="var(--thread)"/></svg>used by</span>
+      <span><svg width="26" height="12"><rect x="1" y="2" width="24" height="8" fill="var(--muted)" opacity="0.3"/></svg>bar length: how much the rest of the repo uses the file</span>
+      <span><svg width="26" height="12"><line x1="1" y1="6" x2="25" y2="6" stroke="var(--muted)" stroke-width="3" opacity="0.4"/></svg>heaviest folder-to-folder flows</span>
+      <span>Esc clears a pinned file</span>
+    </div>
+  </section>
+
+  <div id="stage"><svg id="map" role="group" aria-label="Files by folder"></svg></div>
+</div>
+
+<script>
+// Repo map. Reads the same JSON as the thread view (scripts/build-index.mjs writes it).
+// URL scheme, shared with thread-view.html:
+//   ?data=<url>    the index to load (default data/threads.json)
+//   ?focus=<path>  repo map: pin this file and show its edges
+//   ?files=a,b,c   thread view: files to open      ?sym=<path>:<line>:<col>  thread view: lock the symbol defined there
+//   ?at=<path>:<line>  thread view: scroll to this line
+const $ = s => document.querySelector(s);
+const svg = $("#map"), stageEl = $("#stage");
+const COLW = 224, ROW = 20, HEAD = 26, GAPX = 60, GAPY = 18, PADB = 6, SIDE = 34, MAX_FLOWS = 28;
+const NS = "http://www.w3.org/2000/svg";
+let FILES = [], META = {}, DATA_URL = "";
+let out = [], inn = [];      // out[a] = Map(b -> n): file a uses n symbol occurrences defined in b; inn is the reverse
+let defs = [], inbound = []; // symbols defined per file, usages from other files per file
+let groups = [];             // [{ dir, label, test, files: [i], x, y, h, col }]
+let pos = [];                // pos[file] = { x, y, col } of its row, or null when hidden
+const state = { hover: null, pin: null, tests: true, find: "" };
+
+const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const base = p => p.slice(p.lastIndexOf("/") + 1);
+const dir = p => p.lastIndexOf("/") < 0 ? "" : p.slice(0, p.lastIndexOf("/"));
+const isTest = p => /(^|\/)(test|tests|androidTest)\//.test(p);
+const plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
+
+async function load() {
+  const q = new URLSearchParams(location.search);
+  DATA_URL = q.get("data") || "data/threads.json";
+  const res = await fetch(DATA_URL, { cache: "no-store" });
+  if (!res.ok) throw new Error(DATA_URL + " returned " + res.status);
+  const data = await res.json();
+  META = data.meta || {}; FILES = data.files;
+  out = FILES.map(() => new Map()); inn = FILES.map(() => new Map());
+  defs = FILES.map(() => 0); inbound = FILES.map(() => 0);
+  for (const s of data.symbols) {
+    const b = s.def.file; defs[b]++;
+    for (const r of s.refs) {
+      if (r.file === b) continue;
+      out[r.file].set(b, (out[r.file].get(b) || 0) + 1);
+      inn[b].set(r.file, (inn[b].get(r.file) || 0) + 1);
+      inbound[b]++;
+    }
+  }
+  const focus = q.get("focus");
+  if (focus) { const i = FILES.findIndex(f => f.path === focus || f.path.endsWith("/" + focus)); if (i >= 0) state.pin = i; }
+}
+
+// Link into the thread view for one file.
+function threadsHref(i) {
+  const q = new URLSearchParams();
+  if (DATA_URL !== "data/threads.json") q.set("data", DATA_URL);
+  q.set("files", FILES[i].path);
+  return "thread-view.html?" + q.toString().replace(/%2F/g, "/");
+}
+
+function buildGroups() {
+  const by = new Map();
+  FILES.forEach((f, i) => {
+    if (!state.tests && isTest(f.path)) return;
+    const d = dir(f.path);
+    if (!by.has(d)) by.set(d, { dir: d, test: isTest(f.path), files: [], uses: 0, used: 0 });
+    by.get(d).files.push(i);
+  });
+  groups = [...by.values()];
+  for (const g of groups) {
+    const mine = new Set(g.files);
+    for (const i of g.files) {
+      for (const [b, n] of out[i]) if (!mine.has(b)) g.uses += n;
+      for (const [a, n] of inn[i]) if (!mine.has(a)) g.used += n;
+    }
+    g.files.sort((a, b) => inbound[b] - inbound[a] || base(FILES[a].path).localeCompare(base(FILES[b].path)));
+    g.label = (g.test ? "test / " : "") + (g.dir.slice(g.dir.lastIndexOf("/") + 1) || "(root)");
+    g.h = HEAD + g.files.length * ROW + PADB;
+  }
+  // Left to right: folders that mostly use others first, folders that are mostly used last.
+  const lean = g => (g.used + 1) / (g.uses + g.used + 2);
+  groups.sort((a, b) => lean(a) - lean(b) || a.dir.localeCompare(b.dir));
+}
+
+function layout() {
+  const W = stageEl.clientWidth;
+  const cols = Math.max(1, Math.floor((W - SIDE + GAPX) / (COLW + GAPX)));
+  const total = groups.reduce((n, g) => n + g.h + GAPY, 0), target = total / cols;
+  const step = cols > 1 ? Math.min(COLW + GAPX + 40, (W - SIDE - COLW) / (cols - 1)) : 0;
+  let col = 0, y = 0, tallest = 0;
+  pos = FILES.map(() => null);
+  for (const g of groups) {
+    if (y > 0 && y + g.h / 2 > target && col < cols - 1) { col++; y = 0; }
+    g.col = col; g.x = col * step; g.y = y;
+    g.files.forEach((i, k) => { pos[i] = { x: g.x, y: y + HEAD + k * ROW + ROW / 2, col }; });
+    y += g.h + GAPY; tallest = Math.max(tallest, y);
+  }
+  return { W, H: Math.max(40, tallest) };
+}
+
+function render() {
+  buildGroups();
+  const { W, H } = layout();
+  svg.setAttribute("height", H); svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  const maxIn = Math.max(1, ...inbound), chars = Math.floor((COLW - 58) / 6.95);
+  let html = '<g id="flows"></g>';
+  for (const g of groups) {
+    html += '<rect class="box" x="' + g.x + '" y="' + g.y + '" width="' + COLW + '" height="' + g.h + '" rx="6"/>' +
+      '<text class="title" x="' + (g.x + 10) + '" y="' + (g.y + 17) + '"><title>' + esc(g.dir) + "</title>" + esc(g.label) + "</text>";
+    for (const i of g.files) {
+      const p = pos[i], name = base(FILES[i].path).replace(/\.[A-Za-z]+$/, "");
+      const shown = name.length > chars ? name.slice(0, chars - 1) + "…" : name;
+      html += '<a class="node" data-file="' + i + '" href="' + esc(threadsHref(i)) + '" aria-label="' + esc(FILES[i].path) + ', uses ' + plural(out[i].size, "file") + ", used by " + plural(inn[i].size, "file") + '. Opens in the thread view.">' +
+        '<rect class="hit" x="' + (p.x + 1) + '" y="' + (p.y - ROW / 2) + '" width="' + (COLW - 2) + '" height="' + ROW + '"/>' +
+        '<rect class="heat" x="' + (p.x + 1) + '" y="' + (p.y - ROW / 2 + 3) + '" width="' + (Math.sqrt(inbound[i] / maxIn) * (COLW - 2)).toFixed(1) + '" height="' + (ROW - 6) + '"/>' +
+        '<text x="' + (p.x + 10) + '" y="' + (p.y + 4) + '">' + esc(shown) + '</text><text class="n" x="' + (p.x + COLW - 8) + '" y="' + (p.y + 4) + '"></text></a>';
+    }
+  }
+  svg.innerHTML = html + '<g id="edges"></g>';
+  drawFlows();
+  paint();
+}
+
+// A curve between two rows or boxes, leaving from the side that faces the other end.
+function curve(a, b) {
+  let x1, x2;
+  if (b.x > a.x + 1) { x1 = a.x + COLW; x2 = b.x; }
+  else if (b.x < a.x - 1) { x1 = a.x; x2 = b.x + COLW; }
+  else { x1 = x2 = a.x + COLW; const bx = x1 + Math.min(SIDE - 6, 12 + Math.abs(a.y - b.y) * 0.12); return { d: "M" + x1 + "," + a.y + " C" + bx + "," + a.y + " " + bx + "," + b.y + " " + x2 + "," + b.y, ex: x2, ey: b.y }; }
+  const k = Math.max(24, Math.abs(x2 - x1) * 0.5) * Math.sign(x2 - x1);
+  return { d: "M" + x1 + "," + a.y + " C" + (x1 + k) + "," + a.y + " " + (x2 - k) + "," + b.y + " " + x2 + "," + b.y, ex: x2, ey: b.y };
+}
+
+// Resting state: the heaviest folder-to-folder flows, so the overall shape shows before any hover.
+function drawFlows() {
+  const of = new Map(); groups.forEach(g => g.files.forEach(i => of.set(i, g)));
+  const flows = new Map();
+  for (const g of groups) for (const i of g.files) for (const [b, n] of out[i]) {
+    const h = of.get(b); if (!h || h === g) continue;
+    const k = groups.indexOf(g) + ">" + groups.indexOf(h);
+    flows.set(k, (flows.get(k) || 0) + n);
+  }
+  const top = [...flows].sort((a, b) => b[1] - a[1]).slice(0, MAX_FLOWS), max = top.length ? top[0][1] : 1;
+  let html = "";
+  for (const [k, n] of top) {
+    const [a, b] = k.split(">").map(i => groups[+i]);
+    const c = curve({ x: a.x, y: a.y + 13 }, { x: b.x, y: b.y + 13 });
+    html += '<path d="' + c.d + '" fill="none" style="stroke:var(--muted)" stroke-width="' + (1 + 3 * n / max).toFixed(1) + '" stroke-opacity="0.3"><title>' + esc(a.label + " uses " + b.label + ": " + n) + "</title></path>";
+  }
+  $("#flows").innerHTML = html;
+}
+
+function paint() {
+  const f = state.hover != null ? state.hover : state.pin;
+  const shown = f != null && pos[f] ? f : null;
+  svg.classList.toggle("focus", shown != null);
+  const needle = state.find.trim().toLowerCase();
+  svg.querySelectorAll(".node").forEach(el => {
+    const i = +el.dataset.file;
+    const o = shown != null && out[shown].get(i), n = shown != null && inn[shown].get(i);
+    el.classList.toggle("self", i === shown);
+    el.classList.toggle("out", !!o);
+    el.classList.toggle("in", !!n);
+    el.classList.toggle("match", !!needle && FILES[i].path.toLowerCase().includes(needle));
+    el.querySelector(".n").textContent = o && n ? o + " / " + n : o ? o : n ? n : "";
+  });
+  let html = "";
+  if (shown != null) {
+    const a = pos[shown];
+    const line = (from, to, color, n, max) => {
+      const c = curve(from, to);
+      return '<path d="' + c.d + '" fill="none" style="stroke:' + color + '" stroke-width="' + (1 + 1.8 * n / max).toFixed(1) + '" stroke-opacity="0.85" stroke-linecap="round"/><circle cx="' + c.ex + '" cy="' + c.ey + '" r="2.8" style="fill:' + color + '"/>';
+    };
+    const mo = Math.max(1, ...out[shown].values()), mi = Math.max(1, ...inn[shown].values());
+    for (const [b, n] of inn[shown]) if (pos[b]) html += line(pos[b], a, "var(--thread)", n, mi);
+    for (const [b, n] of out[shown]) if (pos[b]) html += line(a, pos[b], "var(--pin0)", n, mo);
+  }
+  $("#edges").innerHTML = html;
+  renderBar(shown);
+}
+
+function renderBar(f) {
+  if (f == null) {
+    $("#who").innerHTML = '<span class="meta">Hover a file to see what it uses and what uses it. Click to open it in the thread view.</span>';
+    return;
+  }
+  const p = FILES[f].path;
+  $("#who").innerHTML = '<span class="kind">' + (state.hover == null ? "pinned file" : "file") + '</span><span class="name">' + esc(base(p)) + '</span><span class="meta">' + esc(dir(p)) + " · defines " + plural(defs[f], "symbol") +
+    ", uses " + plural(out[f].size, "file") + ", used by " + plural(inn[f].size, "file") + " (" + plural(inbound[f], "usage") + "). Numbers on the rows count usages.</span>";
+}
+
+function start() {
+  const st = META.stats || {};
+  $("#source").textContent = plural(FILES.length, "file") + " from " + DATA_URL + (META.repo ? ", repo " + META.repo : "") + (st.symbols != null ? " (" + st.symbols + " symbols, " + st.refs + " usages)." : ".");
+  if (DATA_URL !== "data/threads.json") $("#to-threads").href = "thread-view.html?data=" + encodeURIComponent(DATA_URL);
+  render();
+  if (state.pin != null) { const el = svg.querySelector('.node[data-file="' + state.pin + '"]'); if (el) el.scrollIntoView({ block: "center" }); }
+
+  const over = e => { const n = e.target.closest && e.target.closest(".node"); const i = n ? +n.dataset.file : null; if (i !== state.hover) { state.hover = i; paint(); } };
+  svg.addEventListener("mouseover", over);
+  svg.addEventListener("mouseleave", () => { if (state.hover != null) { state.hover = null; paint(); } });
+  svg.addEventListener("focusin", over);
+  svg.addEventListener("focusout", () => { if (state.hover != null) { state.hover = null; paint(); } });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && state.pin != null) { state.pin = null; paint(); } });
+  $("#tests").addEventListener("change", e => { state.tests = e.target.checked; render(); });
+  $("#find").addEventListener("input", e => { state.find = e.target.value; paint(); });
+  $("#find").addEventListener("keydown", e => {
+    if (e.key !== "Enter") return;
+    const hit = svg.querySelector(".node.match");
+    if (hit) { state.pin = +hit.dataset.file; paint(); hit.scrollIntoView({ block: "center" }); }
+  });
+  let raf = 0, lastW = stageEl.clientWidth;
+  if (window.ResizeObserver) new ResizeObserver(() => { if (stageEl.clientWidth === lastW) return; lastW = stageEl.clientWidth; cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }).observe(stageEl);
+}
+
+load().then(start).catch(err => {
+  document.querySelector(".bar").hidden = true;
+  stageEl.innerHTML = '<div class="empty"><b>No index loaded.</b><p>' + esc(String(err.message || err)) + '</p>' +
+    '<p>Build it with <code>node scripts/build-index.mjs</code>, then open this page through a local server (<code>python3 -m http.server 4173</code>). Browsers block loading the JSON from a file:// page.</p></div>';
+});
+</script>
+</body>
+</html>

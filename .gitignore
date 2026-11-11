@@ -1,0 +1,15 @@
+node_modules
+dist
+*.local
+.DS_Store
+*.tsbuildinfo
+
+# indexer downloads and raw indexes
+.cache/
+sample/build/
+sample/.gradle/
+sample/.kotlin/
+
+# A local index holds the full source of whatever repo you indexed. Only the sample's is committed.
+public/data/*
+!public/data/sample.json
