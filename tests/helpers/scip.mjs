@@ -33,7 +33,9 @@ export function occurrence({ symbol, range, def = false, encoding = 'packed3', e
   return Buffer.concat(parts)
 }
 
-export const symbolInfo = ({ symbol, kind = 0, displayName = '' }) => Buffer.concat([str(1, symbol), ...(kind ? [num(5, kind)] : []), ...(displayName ? [str(6, displayName)] : [])])
+/** `implements` lists the symbols this one implements or overrides (relationships, field 4, with is_implementation set). */
+export const symbolInfo = ({ symbol, kind = 0, displayName = '', implements: impl = [] }) =>
+  Buffer.concat([str(1, symbol), ...impl.map((s) => bytes(4, Buffer.concat([str(1, s), num(3, 1)]))), ...(kind ? [num(5, kind)] : []), ...(displayName ? [str(6, displayName)] : [])])
 
 export function document({ path, text, occurrences = [], symbols = [] }) {
   return Buffer.concat([str(1, path), str(4, 'java'), ...(text == null ? [] : [str(5, text)]), num(6, 2), ...occurrences.map((o) => bytes(2, o)), ...symbols.map((s) => bytes(3, s))])

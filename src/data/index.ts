@@ -1,5 +1,6 @@
 import type { Index, Occ, Pos, RawIndex, Sym } from '../types'
 import { parsePlace } from '../url'
+import { buildCallGraph } from './callGraph'
 
 export const LOCAL_INDEX = 'data/threads.json'
 export const SAMPLE_INDEX = 'data/sample.json'
@@ -12,7 +13,7 @@ export function isRawIndex(v: unknown): v is RawIndex {
 /** Turns the JSON into the lookup tables the views need. Occurrences that no longer fit the source are dropped. */
 export function buildIndex(raw: RawIndex, source: string): Index {
   const files = raw.files
-  const syms: Sym[] = raw.symbols.map((s, i) => ({ id: 's' + i, scip: s.id, name: s.name || s.id, kind: s.kind || 'symbol', def: s.def, refs: s.refs }))
+  const syms: Sym[] = raw.symbols.map((s, i) => ({ id: 's' + i, scip: s.id, name: s.name || s.id, kind: s.kind || 'symbol', def: s.def, body: s.body, refs: s.refs, impl: s.impl }))
   const occ: Map<number, Occ[]>[] = files.map(() => new Map())
   const defsIn: Sym[][] = files.map(() => [])
   const fits = (o: Pos) => {
@@ -44,6 +45,7 @@ export function buildIndex(raw: RawIndex, source: string): Index {
     defsIn,
     libs: raw.libs ?? [],
     libAt: files.map((f) => new Map((f.libs ?? []).map((row) => [row[0], row.slice(1)]))),
+    graph: buildCallGraph(kept, files.length),
   }
 }
 

@@ -14,8 +14,14 @@ export interface RawSymbol {
   name?: string
   kind?: string
   def: Pos
+  /** The whole definition, body included: [startLine, startCol, endLine, endCol], lines from 1. */
+  body?: Extent
   refs: Pos[]
+  /** The ids of what it implements or overrides, when that is defined in the repo too. */
+  impl?: string[]
 }
+
+export type Extent = [number, number, number, number]
 
 export interface RawFile {
   path: string
@@ -54,7 +60,29 @@ export interface Sym {
   name: string
   kind: string
   def: Pos
+  body?: Extent
   refs: Pos[]
+  /** The SCIP ids of what it implements or overrides. */
+  impl?: string[]
+}
+
+/** One end of an edge in the call graph: the other symbol, and the usages that make the edge. */
+export interface Link {
+  sym: Sym
+  at: Pos[]
+  /** Not a call written in the code: an interface's method and a method that carries it out. `at` is where that method is declared. */
+  impl?: boolean
+}
+
+export interface CallGraph {
+  /** The type or function a symbol is declared in. */
+  parent: Map<string, Sym>
+  /** What a function or type uses, most used first. */
+  out: Map<string, Link[]>
+  /** The functions and types that use a symbol, most uses first. */
+  in: Map<string, Link[]>
+  /** How many edges there are (pairs of symbols, not usages). */
+  edges: number
 }
 
 export interface Occ {
@@ -78,4 +106,5 @@ export interface Index {
   libs: Lib[]
   /** libAt[file]: line -> indexes into `libs`. */
   libAt: Map<number, number[]>[]
+  graph: CallGraph
 }

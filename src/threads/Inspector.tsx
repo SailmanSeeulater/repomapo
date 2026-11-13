@@ -1,4 +1,6 @@
+import { isCallable, isType, usedBy } from '../data/callGraph'
 import { baseName } from '../data/index'
+import { Go, toFunction } from '../nav'
 import type { Index, Pos } from '../types'
 import { COLLAPSE, PIN_COLORS, useThreads } from './store'
 
@@ -48,6 +50,11 @@ export function Inspector({ index, total, onHop }: { index: Index; total: number
     acts =
       focus === sym.id ? (
         <>
+          {(isCallable(sym) || isType(sym)) && (
+            <Go to={toFunction(index, sym)} className={btn} title="Its callers, its code and what it calls">
+              Callers and calls ({usedBy(index, sym).length})
+            </Go>
+          )}
           <button className={btn} onClick={togglePin} disabled={!pinned && full}>
             {pinned ? 'Unpin' : 'Pin'}
           </button>
@@ -106,7 +113,7 @@ export function Inspector({ index, total, onHop }: { index: Index; total: number
   }
 
   return (
-    <section aria-label="Selected symbol" className="flex flex-col gap-2.5 rounded-md border border-rule bg-panel px-3.5 py-3">
+    <section aria-label="Selected symbol" className="flex flex-col gap-2.5 rounded-[10px] bg-panel px-3.5 py-3">
       <div className="flex min-h-[30px] flex-wrap items-center justify-between gap-x-4 gap-y-2.5">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-1.5">{who}</div>
         <div className="flex flex-wrap items-center gap-2">{acts}</div>

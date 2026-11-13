@@ -68,6 +68,12 @@ describe('convert', () => {
     for (const s of json.symbols) expect(text(json, s.def)).toBe(s.name)
   })
 
+  it('keeps the extent of a definition when the index gives one', () => {
+    const json = run()
+    expect(json.symbols.find((s) => s.name === 'User').body).toEqual([3, 0, 3, 40])
+    expect(json.symbols.find((s) => s.name === 'mail').body).toBeUndefined()
+  })
+
   it('merges symbols that share a definition range', () => {
     const json = run()
     const users = json.symbols.filter((s) => s.name === 'User')
@@ -112,5 +118,42 @@ describe('symbol strings', () => {
     expect(libraryName('java/util/List#of(+1).')).toBe('List.of')
     expect(libraryName('java/lang/RuntimeException#`<init>`(+1).')).toBe('RuntimeException')
     expect(libraryName('java/lang/Integer#MAX_VALUE.')).toBe('Integer.MAX_VALUE')
+  })
+})
+
+describe('implements', () => {
+  const text = ['interface Store {', '    void save();', '}', 'class DbStore implements Store {', '    public void save() {}', '}'].join('\n')
+  const json = convert(
+    decodeIndex(
+      index({
+        documents: [
+          document({
+            path: 'src/Store.java',
+            text,
+            occurrences: [
+              occurrence({ symbol: OWN + 'app/Store#', range: [0, 10, 15], def: true }),
+              occurrence({ symbol: OWN + 'app/Store#save().', range: [1, 9, 13], def: true }),
+              occurrence({ symbol: OWN + 'app/DbStore#', range: [3, 6, 13], def: true }),
+              occurrence({ symbol: OWN + 'app/Store#', range: [3, 25, 30] }),
+              occurrence({ symbol: OWN + 'app/DbStore#save().', range: [4, 16, 20], def: true }),
+            ],
+            symbols: [
+              symbolInfo({ symbol: OWN + 'app/DbStore#', implements: [OWN + 'app/Store#', JDK + 'java/lang/Object#'] }),
+              symbolInfo({ symbol: OWN + 'app/DbStore#save().', implements: [OWN + 'app/Store#save().'] }),
+            ],
+          }),
+        ],
+      }),
+    ),
+    '/nowhere',
+    {},
+  )
+  const by = (id) => json.symbols.find((s) => s.id === OWN + id)
+
+  it('records what a definition implements, when that is in the repo', () => {
+    expect(by('app/DbStore#save().').impl).toEqual([OWN + 'app/Store#save().'])
+    expect(by('app/DbStore#').impl).toEqual([OWN + 'app/Store#'])
+    expect(by('app/Store#save().').impl).toBeUndefined()
+    expect(json.meta.stats.implements).toBe(2)
   })
 })

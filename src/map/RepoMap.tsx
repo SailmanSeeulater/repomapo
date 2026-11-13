@@ -108,8 +108,10 @@ export function RepoMap({ index, focus, hrefFor, onOpen, onPin }: { index: Index
   const path = shown != null ? index.files[shown].path : ''
   return (
     <>
-      <p className="m-0 max-w-[68ch] text-muted">Every file in the index, grouped by folder. Hover a file to see which files it uses and which use it. Click it to open it in the thread view.</p>
-      <section aria-label="Selected file" className="flex flex-col gap-2.5 rounded-md border border-rule bg-panel px-3.5 py-3">
+      <h1 className="display">
+        Every file in {index.meta.repo ?? 'this repo'}, grouped by folder, with what each one uses.
+      </h1>
+      <section aria-label="Selected file" className="flex flex-col gap-2.5 rounded-[10px] bg-panel px-3.5 py-3">
         <div className="flex min-h-[44px] flex-wrap items-baseline gap-x-2.5 gap-y-1.5">
             {shown == null ? (
               <span className="text-[13px] text-muted">Hover a file to see what it uses and what uses it. Click to open it in the thread view.</span>
@@ -168,7 +170,8 @@ export function RepoMap({ index, focus, hrefFor, onOpen, onPin }: { index: Index
         </div>
       </section>
 
-      <div ref={ref}>
+      <div className="plate">
+       <div ref={ref}>
         {width > 0 && (
           <svg ref={svgRef} role="group" aria-label="Files by folder" width="100%" height={layout.height} viewBox={`0 0 ${width} ${layout.height}`} className="block overflow-visible" onMouseLeave={() => setHover(null)}>
             {shown == null && (
@@ -180,7 +183,7 @@ export function RepoMap({ index, focus, hrefFor, onOpen, onPin }: { index: Index
             )}
             {groups.map((g) => (
               <g key={g.dir}>
-                <rect x={g.x} y={g.y} width={COLW} height={g.h} rx="6" fill="var(--surface)" stroke="var(--rule)" />
+                <rect x={g.x} y={g.y} width={COLW} height={g.h} rx="8" fill="var(--surface)" />
                 <text x={g.x + 10} y={g.y + 17} className="fill-muted font-mono text-[11px]">
                   <title>{g.dir}</title>
                   {g.label}
@@ -223,6 +226,7 @@ export function RepoMap({ index, focus, hrefFor, onOpen, onPin }: { index: Index
             <g pointerEvents="none">{edges}</g>
           </svg>
         )}
+       </div>
       </div>
     </>
   )

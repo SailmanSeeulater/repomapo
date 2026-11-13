@@ -124,11 +124,12 @@ export function ThreadView({ index, link, onLink }: { index: Index; link: Link; 
 
   return (
     <>
+      <h1 className="display">Threads from each definition to every place it is used.</h1>
       <p className="m-0 max-w-[68ch] text-muted">
         Hover any underlined name to see its threads. Click it to lock it and jump to its definition; if that file is not open, it opens. Up to four files stay open, and the one you used longest ago closes.
       </p>
       <Inspector index={index} total={total} onHop={hop} />
-      <div className="grid items-start gap-[26px] min-[881px]:grid-cols-[240px_minmax(0,1fr)] max-[880px]:gap-4">
+      <div className="plate grid items-start gap-[26px] min-[881px]:grid-cols-[240px_minmax(0,1fr)] max-[880px]:gap-4">
         <FileTree index={index} open={open.map((p) => p.file)} onOpen={(file) => hop(file, 1, false)} />
         <div ref={stageRef} className="stage" aria-label="Code panes" />
       </div>
