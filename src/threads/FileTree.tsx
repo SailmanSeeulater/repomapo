@@ -64,7 +64,7 @@ export function FileTree({ index, open, onOpen }: { index: Index; open: number[]
   const hits = q ? index.files.map((_, i) => i).filter((i) => index.files[i].path.toLowerCase().includes(q)) : []
 
   return (
-    <nav aria-label="Files" className="flex max-h-[524px] min-w-0 flex-col rounded-md border border-rule bg-panel max-[880px]:max-h-[220px]">
+    <nav aria-label="Files" className="flex max-h-[524px] min-w-0 flex-col rounded-[10px] bg-surface max-[880px]:max-h-[220px]">
       <input
         type="search"
         value={query}

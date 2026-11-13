@@ -6,6 +6,10 @@
     <meta name="color-scheme" content="light dark" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>repomapo</title>
+    <script>
+      // A theme chosen with the switch wins over the system one, and is applied before the first paint.
+      try { var t = localStorage.getItem('repomapo-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t } catch (e) {}
+    </script>
     <meta name="description" content="A map of a codebase, from the whole repo down to single lines: every file and what it uses, then threads from each definition to every usage." />
   </head>
   <body>

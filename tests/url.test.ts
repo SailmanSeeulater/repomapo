@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { parsePlace, readLink, writeLink } from '../src/url'
 
 describe('readLink', () => {
-  it('defaults to the map', () => {
-    expect(readLink('')).toEqual({ view: 'map', data: null, focus: null, files: [], sym: null, at: null })
+  it('defaults to the board', () => {
+    expect(readLink('')).toEqual({ view: 'space', data: null, focus: null, fn: null, orbit: false, flow: false, files: [], sym: null, at: null })
   })
 
   it('reads a thread view link', () => {
@@ -21,13 +21,29 @@ describe('writeLink', () => {
   })
 
   it('writes only what the view uses', () => {
-    expect(writeLink({ view: 'map', files: ['src/A.kt'], sym: 'x:1' })).toBe('')
-    expect(writeLink({ view: 'map', focus: 'src/A.kt', data: 'data/x.json' })).toBe('?data=data/x.json&focus=src/A.kt')
+    expect(writeLink({ view: 'space', files: ['src/A.kt'], sym: 'x:1', orbit: true })).toBe('')
+    expect(writeLink({ view: 'map', files: ['src/A.kt'], sym: 'x:1' })).toBe('?view=map')
+    expect(writeLink({ view: 'map', focus: 'src/A.kt', data: 'data/x.json' })).toBe('?view=map&data=data/x.json&focus=src/A.kt')
     expect(writeLink({ view: 'threads', focus: 'src/A.kt' })).toBe('?view=threads')
   })
 
+  it('writes a function link and nothing the function page does not use', () => {
+    expect(writeLink({ view: 'function', fn: 'src/A.kt:12:8', focus: 'src/B.kt', files: ['x'] })).toBe('?view=function&fn=src/A.kt:12:8')
+    expect(writeLink({ view: 'functions', fn: 'src/A.kt:12:8' })).toBe('?view=functions')
+    expect(readLink('?view=function&fn=src/A.kt:12:8').fn).toBe('src/A.kt:12:8')
+    expect(readLink('?view=nonsense').view).toBe('space')
+  })
+
+  it('writes a board link: the function picked, and whether it is in the middle', () => {
+    expect(writeLink({ view: 'space', fn: 'src/A.kt:12:8' })).toBe('?fn=src/A.kt:12:8')
+    expect(writeLink({ view: 'space', fn: 'src/A.kt:12:8', orbit: true })).toBe('?fn=src/A.kt:12:8&orbit=1')
+    expect(readLink('?fn=src/A.kt:12:8&orbit=1')).toMatchObject({ view: 'space', fn: 'src/A.kt:12:8', orbit: true })
+    expect(writeLink({ view: 'space', fn: 'src/A.kt:12:8', flow: true })).toBe('?fn=src/A.kt:12:8&flow=1')
+    expect(readLink('?fn=src/A.kt:12:8&flow=1')).toMatchObject({ fn: 'src/A.kt:12:8', orbit: false, flow: true })
+  })
+
   it('round-trips', () => {
-    const link = { view: 'threads' as const, data: 'data/sample.json', focus: null, files: ['a/B.java', 'c d/E.java'], sym: 'a/B.java:12:4', at: null }
+    const link = { view: 'threads' as const, data: 'data/sample.json', focus: null, fn: null, orbit: false, flow: false, files: ['a/B.java', 'c d/E.java'], sym: 'a/B.java:12:4', at: null }
     expect(readLink(writeLink(link))).toEqual(link)
   })
 })

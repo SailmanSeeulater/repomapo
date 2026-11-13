@@ -246,7 +246,7 @@ function decodeRange(r, fields) { // SingleLineRange or MultiLineRange -> [start
 }
 
 function decodeOccurrence(r) {
-  const o = { range: [], symbol: "", roles: 0, typed: null };
+  const o = { range: [], symbol: "", roles: 0, typed: null, enclosing: [] };
   while (r.more()) {
     const [f, w] = r.tag();
     if (f === 1) ints(r, w, o.range);
@@ -254,10 +254,15 @@ function decodeOccurrence(r) {
     else if (f === 3) o.roles = r.int32();
     else if (f === 8) o.typed = decodeRange(r.sub(), 3);
     else if (f === 9) o.typed = decodeRange(r.sub(), 4);
+    // The whole definition, body included: packed (7), or typed single-line (10) / multi-line (11).
+    else if (f === 7) ints(r, w, o.enclosing);
+    else if (f === 10) o.enclosing = decodeRange(r.sub(), 3);
+    else if (f === 11) o.enclosing = decodeRange(r.sub(), 4);
     else r.skip(w);
   }
-  const g = o.range;
-  o.range = o.typed || (g.length === 3 ? [g[0], g[1], g[0], g[2]] : g.length === 4 ? g : null);
+  const four = g => g.length === 3 ? [g[0], g[1], g[0], g[2]] : g.length === 4 ? g : null;
+  o.range = o.typed || four(o.range);
+  o.enclosing = four(o.enclosing);
   return o;
 }
 
@@ -357,12 +362,13 @@ function libraryName(descriptor) {
 
 function convert(index, repo, opts) {
   const docs = index.documents.slice().sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
-  const files = [], stats = { documents: docs.length, occurrences: 0, external: 0, locals: 0, multiline: 0, stale: 0, merged: 0, overlapping: 0, synthetic: 0, annotation: 0, accessors: 0 };
+  const files = [], stats = { documents: docs.length, occurrences: 0, external: 0, locals: 0, multiline: 0, stale: 0, merged: 0, overlapping: 0, synthetic: 0, annotation: 0, accessors: 0, bodies: 0, implements: 0 };
   const syms = new Map(); // key -> { key, kind, name, defs: [], refs: [] }
   const info = new Map();
   const IDENT = /^`[^`]+`$|^[\p{L}\p{N}_$]+$/u;
   const generated = new Set(); // symbols whose only definition is a multi-line range (Lombok output)
   const get = key => { let s = syms.get(key); if (!s) syms.set(key, s = { key, defs: [], refs: [] }); return s; };
+  const bodies = new Map();    // definition position -> [startLine, startCol, endLine, endCol] of the whole definition
 
   docs.forEach((d, fi) => {
     let text = d.text;
@@ -391,6 +397,11 @@ function convert(index, repo, opts) {
       if (!(o.roles & 1) && !IDENT.test(line.slice(col, end))) { stats.annotation++; continue; }
       const s = get(scoped(o.symbol));
       (o.roles & 1 ? s.defs : s.refs).push(at);
+      // Where the definition starts and ends, so the app can tell which function a usage sits in.
+      if (o.roles & 1 && o.enclosing) {
+        const [b0, bc0, b1, bc1] = o.enclosing, first = lines[b0], last = lines[b1];
+        if (first != null && last != null && (b1 > b0 || bc1 > bc0)) { bodies.set(at, [b0 + 1, toUtf16(first, bc0, d.encoding), b1 + 1, toUtf16(last, bc1, d.encoding)]); stats.bodies++; }
+      }
     }
   });
 
@@ -451,7 +462,19 @@ function convert(index, repo, opts) {
     const head = g[0], def = head.defs[0];
     const refs = new Map();
     for (const s of g) for (const r of s.refs.concat(s.defs.slice(1))) if (pos(r) !== pos(def)) refs.set(pos(r), r);
-    merged.push({ id: head.key, name: head.name, kind: head.kind, def, refs: [...refs.values()] });
+    const body = bodies.get(def);
+    merged.push({ id: head.key, name: head.name, kind: head.kind, def, ...(body && { body }), refs: [...refs.values()], keys: g.map(s => s.key) });
+  }
+
+  // What each definition implements or overrides, when that is defined in the repo too: an
+  // interface's method and the methods that carry it out, a class and its supertypes.
+  const headOf = new Map();
+  for (const m of merged) for (const k of m.keys) headOf.set(k, m.id);
+  for (const m of merged) {
+    const impl = new Set();
+    for (const k of m.keys) for (const t of (info.get(k)?.implements ?? [])) { const to = headOf.get(t); if (to && to !== m.id) impl.add(to); }
+    delete m.keys;
+    if (impl.size) { m.impl = [...impl].sort(); stats.implements += impl.size; }
   }
 
   // One symbol per source position: definitions first, then usages in rank order.
@@ -497,6 +520,7 @@ function main() {
   const s = json.meta.stats;
   console.log("wrote " + path.relative(process.cwd(), args.out) + ": " + s.files + " files, " + s.symbols + " symbols, " + s.refs + " usages");
   if (s.accessors) console.log("threaded " + s.accessors + " generated getter/setter calls to their fields");
+  console.log("definitions with a known extent: " + json.symbols.filter(x => x.body).length + " of " + s.symbols + " (these give the call edges)");
   console.log("library symbols: " + s.libs + " (marked on the lines that use them, no threads)");
   console.log("skipped: " + (args.locals ? 0 : s.locals) + " local occurrences, " + s.synthetic + " compiler-generated, " + s.annotation + " at annotations, " + s.multiline + " multi-line, " + s.stale + " out of range, " + s.overlapping + " overlapping");
 }
